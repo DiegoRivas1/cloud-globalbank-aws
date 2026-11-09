@@ -1,0 +1,28 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: backend
+  namespace: globalbank
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backend
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization          # % respecto al "request" de CPU (100m)
+          averageUtilization: 60
+  behavior:                          # ajustes pensados para una demo rápida
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - { type: Pods, value: 2, periodSeconds: 15 }
+    scaleDown:
+      stabilizationWindowSeconds: 60
+      policies:
+        - { type: Pods, value: 1, periodSeconds: 30 }

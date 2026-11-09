@@ -8,7 +8,7 @@ server {
     # nueva y así el balanceo (kube-proxy / DNS) reparte entre pods. Con keepalive,
     # muchas peticiones se pegarían a las mismas conexiones y el reparto se vería sesgado.
     location /api/ {
-        proxy_pass http://${BACKEND_HOST}:${BACKEND_PORT};
+        proxy_pass http://${BACKEND_ADDR};
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_connect_timeout 3s;
@@ -16,7 +16,7 @@ server {
     }
 
     location /loadgen/ {
-        proxy_pass http://${LOADGEN_HOST}:${LOADGEN_PORT}/;
+        proxy_pass http://${LOADGEN_ADDR}/;
         proxy_set_header Host $host;
         proxy_read_timeout 30s;
     }
