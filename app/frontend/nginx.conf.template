@@ -4,6 +4,10 @@ server {
     root /usr/share/nginx/html;
     index index.html;
 
+    # Resolución en tiempo de petición (solo para /cluster/): si clusterview no existe
+    # (por ejemplo en Docker Compose) nginx arranca igual y /cluster/ responde 502.
+    resolver ${NGINX_LOCAL_RESOLVERS} valid=10s ipv6=off;
+
     # IMPORTANTE: sin "keepalive" hacia el backend. Cada petición abre una conexión
     # nueva y así el balanceo (kube-proxy / DNS) reparte entre pods. Con keepalive,
     # muchas peticiones se pegarían a las mismas conexiones y el reparto se vería sesgado.
@@ -19,6 +23,15 @@ server {
         proxy_pass http://${LOADGEN_ADDR}/;
         proxy_set_header Host $host;
         proxy_read_timeout 30s;
+    }
+
+    location /cluster/ {
+        set $clusterview http://${CLUSTERVIEW_ADDR};
+        rewrite ^/cluster/(.*)$ /$1 break;
+        proxy_pass $clusterview;
+        proxy_set_header Host $host;
+        proxy_connect_timeout 3s;
+        proxy_read_timeout 15s;
     }
 
     location = /nginx-health {

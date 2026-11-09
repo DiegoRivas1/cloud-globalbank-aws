@@ -69,7 +69,29 @@
     </section>
 
     <section class="card">
-      <h2>3. La aplicación: cuenta bancaria</h2>
+      <h2>3. Estado del clúster</h2>
+      <p class="hint">Pods, consumo y autoescalado en vivo. Solo funciona dentro de Kubernetes.</p>
+      <p id="cv-offline" class="warn" hidden>Panel no disponible (¿estás en Docker Compose?).</p>
+      <div class="kpis">
+        <div><small>Réplicas (actual → deseada)</small><b id="cv-replicas">—</b></div>
+        <div><small>CPU media</small><b id="cv-cpu">—</b></div>
+        <div><small>Objetivo HPA</small><b id="cv-target">—</b></div>
+        <div><small>Mín / Máx</small><b id="cv-minmax">—</b></div>
+      </div>
+      <div class="chart"><canvas id="chart-hpa"></canvas></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Pod</th><th>Nodo</th><th>Estado</th><th>CPU</th><th>Mem</th><th>Reinicios</th><th>Edad</th><th></th></tr></thead>
+          <tbody id="pods-body"></tbody>
+        </table>
+      </div>
+      <p id="cv-msg" class="hint"></p>
+      <h3>Eventos recientes</h3>
+      <ul id="cv-events"></ul>
+    </section>
+
+    <section class="card">
+      <h2>4. La aplicación: cuenta bancaria</h2>
       <div class="account">
         <div>
           <small>Saldo</small>
