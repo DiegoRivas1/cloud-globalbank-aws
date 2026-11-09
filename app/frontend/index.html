@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GlobalBank · Cluster Lab</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>GlobalBank <span>Cluster Lab</span></h1>
+    <div class="token">
+      <label for="token">Token de control</label>
+      <input id="token" type="password" placeholder="LOADGEN_TOKEN" autocomplete="off">
+    </div>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>1. Balanceo de carga</h2>
+      <p class="hint">Envía una ráfaga de peticiones desde tu navegador y mira qué pod atendió cada una.</p>
+      <div class="row">
+        <label>Peticiones <input id="burst-n" type="number" min="10" max="500" value="100"></label>
+        <button id="btn-burst">Enviar ráfaga</button>
+        <span id="burst-caption" class="hint"></span>
+      </div>
+      <div class="chart"><canvas id="chart-burst"></canvas></div>
+    </section>
+
+    <section class="card">
+      <h2>2. Generador de tráfico</h2>
+      <p class="hint">La carga se genera dentro del clúster (servicio <code>loadgen</code>), no en tu navegador.</p>
+      <div class="grid">
+        <label>Tipo de petición
+          <select id="mode">
+            <option value="whoami">whoami (liviana)</option>
+            <option value="cuenta">cuenta (lee BD)</option>
+            <option value="work" selected>work (consume CPU)</option>
+            <option value="transfer">transfer (escribe BD)</option>
+          </select>
+        </label>
+        <label>Peticiones por segundo: <b id="rps-val">50</b>
+          <input id="rps" type="range" min="1" max="500" value="50">
+        </label>
+        <label>Duración (s) <input id="duration" type="number" min="1" max="300" value="60"></label>
+        <label id="ms-wrap">CPU por petición (ms) <input id="ms" type="number" min="1" max="1000" value="50"></label>
+      </div>
+      <div class="row">
+        <button id="btn-start">Iniciar</button>
+        <button id="btn-stop" class="secondary">Detener</button>
+        <span id="msg" class="hint"></span>
+      </div>
+      <p id="lg-offline" class="warn" hidden>No se puede contactar con el generador de carga.</p>
+
+      <div class="kpis">
+        <div><small>Estado</small><b id="k-state">—</b></div>
+        <div><small>Total</small><b id="k-total">0</b></div>
+        <div><small>Errores</small><b id="k-errors">0</b></div>
+        <div><small>Descartadas</small><b id="k-dropped">0</b></div>
+        <div><small>Latencia p50</small><b id="k-p50">—</b></div>
+        <div><small>Latencia p95</small><b id="k-p95">—</b></div>
+      </div>
+
+      <div class="charts">
+        <div class="chart"><canvas id="chart-rps"></canvas></div>
+        <div class="chart"><canvas id="chart-lat"></canvas></div>
+        <div class="chart"><canvas id="chart-pods"></canvas></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>3. La aplicación: cuenta bancaria</h2>
+      <div class="account">
+        <div>
+          <small>Saldo</small>
+          <div id="saldo" class="saldo">—</div>
+          <small>BD: <span id="motor">—</span> · respondió el pod <code id="pod-resp">—</code> (<span id="ver">—</span>)</small>
+        </div>
+        <form id="transfer-form" class="grid">
+          <label>Cuenta destino <input id="destino" type="text" maxlength="50" required></label>
+          <label>Monto <input id="monto" type="number" step="0.01" min="0.01" required></label>
+          <button type="submit">Transferir</button>
+        </form>
+      </div>
+      <p id="transfer-msg" class="hint"></p>
+      <ul id="movs"></ul>
+    </section>
+  </main>
+
+  <script src="vendor/chart.umd.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
