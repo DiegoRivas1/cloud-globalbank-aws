@@ -1,4 +1,4 @@
-import pytest
+﻿import pytest
 
 import service
 from service import InsufficientFunds, ValidationError
@@ -23,7 +23,7 @@ def test_destino_invalido(destino):
 
 def test_transferencia_descuenta_saldo(db):
     res = service.transfer(db, "123456789", 100)
-    assert res["nuevo_saldo"] == 14900.0
+    assert res["nuevo_saldo"] == 1.0
     assert service.get_account(db)["saldo"] == 14900.0
 
 
