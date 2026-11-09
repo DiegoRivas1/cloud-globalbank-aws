@@ -1,0 +1,25 @@
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.db
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+crash.log
+
+# Secretos y credenciales
+.env
+*.pem
+*.ppk
+.aws/
+
+# Otros
+.idea/
+.vscode/
+node_modules/
