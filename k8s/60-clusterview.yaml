@@ -1,0 +1,93 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: clusterview
+  namespace: globalbank
+---
+# Permisos mínimos y solo dentro del namespace "globalbank"
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: clusterview
+  namespace: globalbank
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["list"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: clusterview
+  namespace: globalbank
+subjects:
+  - kind: ServiceAccount
+    name: clusterview
+    namespace: globalbank
+roleRef:
+  kind: Role
+  name: clusterview
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clusterview
+  namespace: globalbank
+spec:
+  selector:
+    app: clusterview
+  ports:
+    - port: 8100
+      targetPort: 8100
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clusterview
+  namespace: globalbank
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: clusterview
+  template:
+    metadata:
+      labels:
+        app: clusterview
+    spec:
+      serviceAccountName: clusterview
+      containers:
+        - name: clusterview
+          image: globalbank-clusterview:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8100
+          env:
+            - name: CLUSTERVIEW_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: globalbank-secrets
+                  key: LOADGEN_TOKEN        # el mismo token de control de la página
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8100 }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8100 }
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 20m, memory: 48Mi }
+            limits: { cpu: 200m, memory: 128Mi }

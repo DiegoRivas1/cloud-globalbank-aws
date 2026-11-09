@@ -30,8 +30,11 @@ spec:
       enableServiceLinks: false
       containers:
         - name: frontend
-          image: globalbank-frontend:dev2
+          image: globalbank-frontend:dev5
           imagePullPolicy: IfNotPresent
+          env:
+            - name: CLUSTERVIEW_ADDR
+              value: clusterview.globalbank.svc.cluster.local:8100
           ports:
             - containerPort: 80
           # BACKEND_HOST=backend y LOADGEN_HOST=loadgen ya coinciden con los nombres de los Services

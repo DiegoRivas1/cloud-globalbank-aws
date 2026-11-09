@@ -144,7 +144,109 @@
   setInterval(poll, 1000);
   poll();
 
-  // ---------- Panel 3: la aplicación bancaria ----------
+  // ---------- Panel 3: estado del clúster ----------
+  const HIST = 90;   // muestras en la gráfica (una cada 2 s)
+  const chartHpa = new Chart($('chart-hpa'), {
+    type: 'line',
+    data: { labels: [], datasets: [
+      { label: 'Pods backend listos', data: [], borderColor: '#2563eb', stepped: true, yAxisID: 'y', pointRadius: 0 },
+      { label: 'CPU media (%)', data: [], borderColor: '#dc2626', yAxisID: 'y1', tension: 0.25, pointRadius: 0 },
+    ] },
+    options: {
+      animation: false, responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: { grid: { color: grid } },
+        y: { beginAtZero: true, ticks: { stepSize: 1 }, grid: { color: grid }, title: { display: true, text: 'Pods' } },
+        y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'CPU %' } },
+      },
+    },
+  });
+
+  const fmtAge = (s) => (s == null ? '—' : s < 90 ? `${s}s` : s < 5400 ? `${Math.round(s / 60)}m` : `${Math.round(s / 3600)}h`);
+  const num = (v, unit) => (v == null ? '—' : `${v} ${unit}`);
+
+  function cell(tr, text, cls) {
+    const td = document.createElement('td');
+    td.textContent = text;               // textContent: evita inyección HTML
+    if (cls) td.className = cls;
+    tr.append(td);
+    return td;
+  }
+
+  async function killPod(name) {
+    $('cv-msg').textContent = `Borrando ${name}…`;
+    try {
+      const r = await fetch('/cluster/kill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Token': $('token').value },
+        body: JSON.stringify({ pod: name }),
+      });
+      const j = await r.json().catch(() => ({}));
+      $('cv-msg').textContent = r.ok ? `Pod ${name} borrado: Kubernetes creará uno nuevo` : (j.error || `Error ${r.status}`);
+    } catch { $('cv-msg').textContent = 'No se pudo contactar con el panel'; }
+    pollCluster();
+  }
+
+  function renderCluster(d) {
+    const h = d.hpa;
+    $('cv-replicas').textContent = h ? `${h.current ?? '—'} → ${h.desired ?? '—'}` : '—';
+    $('cv-cpu').textContent = h && h.cpu_current != null ? `${h.cpu_current}%` : '—';
+    $('cv-target').textContent = h && h.cpu_target != null ? `${h.cpu_target}%` : '—';
+    $('cv-minmax').textContent = h ? `${h.min} / ${h.max}` : '—';
+
+    const readyBackends = d.pods.filter((p) => p.app === 'backend' && p.ready).length;
+    const { labels, datasets } = chartHpa.data;
+    labels.push(new Date().toLocaleTimeString());
+    datasets[0].data.push(readyBackends);
+    datasets[1].data.push(h ? h.cpu_current : null);
+    if (labels.length > HIST) { labels.shift(); datasets[0].data.shift(); datasets[1].data.shift(); }
+    chartHpa.update();
+
+    const body = $('pods-body');
+    body.replaceChildren();
+    for (const p of d.pods) {
+      const tr = document.createElement('tr');
+      cell(tr, p.name);
+      cell(tr, p.node || '—');
+      cell(tr, p.ready ? p.status : `${p.status} (no listo)`, p.ready && p.status === 'Running' ? 'ok' : 'bad');
+      cell(tr, num(p.cpu_m, 'm'));
+      cell(tr, num(p.mem_mi, 'Mi'));
+      cell(tr, String(p.restarts));
+      cell(tr, fmtAge(p.age_s));
+      const td = document.createElement('td');
+      if (p.killable) {
+        const b = document.createElement('button');
+        b.className = 'small';
+        b.textContent = 'Matar';
+        b.addEventListener('click', () => killPod(p.name));
+        td.append(b);
+      }
+      tr.append(td);
+      body.append(tr);
+    }
+
+    const ul = $('cv-events');
+    ul.replaceChildren();
+    for (const e of d.events) {
+      const li = document.createElement('li');
+      li.textContent = `${e.time.slice(11, 19)} · ${e.reason} · ${e.object}: ${e.message}`;
+      ul.append(li);
+    }
+    if (d.warnings.length) $('cv-msg').textContent = d.warnings.join(' · ');
+  }
+
+  async function pollCluster() {
+    try {
+      const r = await fetch('/cluster/status', { cache: 'no-store' });
+      if (!r.ok) throw new Error(r.status);
+      renderCluster(await r.json());
+      $('cv-offline').hidden = true;
+    } catch { $('cv-offline').hidden = false; }
+  }
+  setInterval(pollCluster, 2000);
+  pollCluster();
+
+  // ---------- Panel 4: la aplicación bancaria ----------
   async function loadAccount() {
     try {
       const r = await fetch('/api/cuenta', { cache: 'no-store' });
