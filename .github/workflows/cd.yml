@@ -1,0 +1,101 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Un solo despliegue a la vez
+concurrency:
+  group: deploy-eks
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  CLUSTER_NAME: globalbank-eks
+
+jobs:
+  # Si cualquier prueba falla, "deploy" no se ejecuta
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    name: Publicar en ECR y desplegar en EKS
+    needs: ci
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Credenciales de AWS (Learner Lab)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login en ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Versión de la imagen
+        run: echo "IMAGE_TAG=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+
+      - name: Construir y publicar imágenes
+        run: |
+          for c in backend frontend loadgen clusterview; do
+            image="${{ steps.ecr.outputs.registry }}/globalbank/$c:$IMAGE_TAG"
+            docker build -t "$image" "app/$c"
+            docker push "$image"
+          done
+
+      - name: Configurar kubectl
+        run: aws eks update-kubeconfig --region "$AWS_REGION" --name "$CLUSTER_NAME"
+
+      - name: Desplegar en EKS
+        run: |
+          kubectl kustomize k8s/overlays/eks \
+            | sed -e "s|ECR_REGISTRY|${{ steps.ecr.outputs.registry }}|g" -e "s|IMAGE_TAG|$IMAGE_TAG|g" \
+            | kubectl apply -f -
+
+      - name: Verificar el estado del despliegue
+        run: |
+          kubectl -n globalbank rollout status statefulset/postgres --timeout=300s
+          for d in backend loadgen clusterview frontend; do
+            kubectl -n globalbank rollout status deployment/$d --timeout=300s
+          done
+          kubectl -n globalbank get pods -o wide
+
+      - name: Comprobar la disponibilidad de la aplicación
+        run: |
+          host=""
+          for i in $(seq 1 30); do
+            host=$(kubectl -n globalbank get svc frontend -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+            [ -n "$host" ] && break
+            sleep 5
+          done
+          url="http://$host"
+          ok=0
+          for i in $(seq 1 40); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$url/api/whoami" || true)
+            if [ "$code" = "200" ]; then ok=1; break; fi
+            sleep 6
+          done
+          [ "$ok" = "1" ] || { echo "La aplicación no responde en $url"; exit 1; }
+          echo "Respuesta: $(curl -s "$url/api/whoami")"
+          {
+            echo "### Despliegue correcto"
+            echo ""
+            echo "- Versión (commit): \`$IMAGE_TAG\`"
+            echo "- URL: $url"
+            echo "- Respuesta de /api/whoami: \`$(curl -s "$url/api/whoami")\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Diagnóstico si algo falló
+        if: failure()
+        run: |
+          kubectl -n globalbank get pods -o wide || true
+          kubectl -n globalbank get events --sort-by=.lastTimestamp | tail -25 || true
