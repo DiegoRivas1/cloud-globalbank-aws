@@ -1,0 +1,45 @@
+# Entorno local completo: frontend (nginx) -> backend x3 -> postgres, + loadgen.
+# Uso: copiar .env.example a .env, y luego `docker compose up --build`
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: banco_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?define DB_PASSWORD en .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d banco_db"]
+      interval: 3s
+      timeout: 3s
+      retries: 15
+
+  backend:
+    build: ./app/backend
+    environment:
+      DB_HOST: postgres
+      DB_PASSWORD: ${DB_PASSWORD:?define DB_PASSWORD en .env}
+      APP_VERSION: compose
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      replicas: 3        # 3 "pods" locales para ver el balanceo
+
+  loadgen:
+    build: ./app/loadgen
+    environment:
+      LOADGEN_TOKEN: ${LOADGEN_TOKEN:?define LOADGEN_TOKEN en .env}
+      TARGET_URL: http://frontend      # la carga entra por el mismo camino que un usuario
+
+  frontend:
+    build: ./app/frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+      - loadgen
+
+volumes:
+  pgdata:
