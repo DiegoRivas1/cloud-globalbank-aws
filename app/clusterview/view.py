@@ -1,5 +1,5 @@
 """Transforma las respuestas JSON de la API de Kubernetes en vistas simples (lógica pura)."""
-from datetime import datetime, timezone
+from datetime import datetime
 
 _MEM = {"Ki": 1 / 1024, "Mi": 1, "Gi": 1024, "Ti": 1024 * 1024,
         "K": 1000 / 1048576, "M": 1e6 / 1048576, "G": 1e9 / 1048576}

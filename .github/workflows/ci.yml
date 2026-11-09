@@ -2,7 +2,7 @@ name: CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [master]
   workflow_call:          # lo reutiliza el pipeline de despliegue (cd.yml)
   workflow_dispatch:
 
