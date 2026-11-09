@@ -23,3 +23,7 @@ crash.log
 .idea/
 .vscode/
 node_modules/
+
+
+*.zip
+tfplan
