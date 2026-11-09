@@ -1,0 +1,6 @@
+# Copia a terraform.tfvars (ignorado por git) solo si quieres cambiar algún valor
+# region             = "us-east-1"
+# cluster_name       = "globalbank-eks"
+# kubernetes_version = "1.33"      # fija la versión para que sea reproducible
+# node_instance_type = "t3.medium"
+# node_count         = 2

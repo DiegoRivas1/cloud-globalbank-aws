@@ -1,0 +1,38 @@
+# Clúster en AWS (EKS): imágenes desde ECR, frontend con LoadBalancer y Postgres con local-path.
+# ECR_REGISTRY e IMAGE_TAG se sustituyen al desplegar (scripts/deploy-eks.ps1 o el pipeline).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+
+images:
+  - name: globalbank-backend
+    newName: ECR_REGISTRY/globalbank/backend
+    newTag: IMAGE_TAG
+  - name: globalbank-frontend
+    newName: ECR_REGISTRY/globalbank/frontend
+    newTag: IMAGE_TAG
+  - name: globalbank-loadgen
+    newName: ECR_REGISTRY/globalbank/loadgen
+    newTag: IMAGE_TAG
+  - name: globalbank-clusterview
+    newName: ECR_REGISTRY/globalbank/clusterview
+    newTag: IMAGE_TAG
+
+patches:
+  - target:
+      kind: Service
+      name: frontend
+    patch: |-
+      - op: replace
+        path: /spec/type
+        value: LoadBalancer
+      - op: remove
+        path: /spec/ports/0/nodePort
+  - target:
+      kind: StatefulSet
+      name: postgres
+    patch: |-
+      - op: add
+        path: /spec/volumeClaimTemplates/0/spec/storageClassName
+        value: local-path
