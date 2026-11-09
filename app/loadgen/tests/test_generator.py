@@ -1,5 +1,3 @@
-import asyncio
-
 from generator import LoadGenerator, build_request
 from stats import Stats
 
