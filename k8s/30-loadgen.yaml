@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: loadgen
+  namespace: globalbank
+spec:
+  selector:
+    app: loadgen
+  ports:
+    - port: 8000
+      targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loadgen
+  namespace: globalbank
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: loadgen
+  template:
+    metadata:
+      labels:
+        app: loadgen
+    spec:
+      containers:
+        - name: loadgen
+          image: globalbank-loadgen:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          env:
+            - name: LOADGEN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: globalbank-secrets
+                  key: LOADGEN_TOKEN
+            - name: TARGET_URL        # entra por el mismo camino que un usuario: frontend -> backend
+              value: http://frontend
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8000 }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8000 }
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 100m, memory: 64Mi }
+            limits: { cpu: "1", memory: 256Mi }
