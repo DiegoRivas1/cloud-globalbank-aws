@@ -1,115 +1,90 @@
 # GlobalBank Cluster Lab
 
-Aplicación bancaria de demostración, cloud-native, desplegada en **Amazon EKS** con un panel web para
-generar tráfico, ver el balanceo entre pods, el escalado automático (HPA) y la recuperación ante fallos.
+Aplicación bancaria de demostración, **cloud-native**, desplegada en **Amazon EKS**, con un panel web para
+generar tráfico y ver en vivo el balanceo entre pods, el autoscaling (HPA) y la recuperación ante fallos.
 
-Proyecto Integrador de Cloud Computing (UNSA).
+Proyecto Integrador de Cloud Computing, Universidad Nacional de San Agustín (UNSA).
 
-## Arquitectura
+## Qué se hizo
 
-| Componente    | Tecnología              | Función                                                    |
-|---------------|-------------------------|------------------------------------------------------------|
-| `frontend`    | nginx + JS (Chart.js)   | Panel web y proxy hacia los demás servicios                |
-| `backend`     | Flask + gunicorn        | API bancaria (`/api/cuenta`, `/api/transfer`, `/api/work`) |
-| `postgres`    | PostgreSQL (StatefulSet)| Persistencia                                               |
-| `loadgen`     | aiohttp                 | Generador de carga dentro del clúster                      |
-| `clusterview` | aiohttp                 | Estado de pods/HPA/eventos; elimina pods del backend       |
+- **Aplicación en 5 servicios:** `backend` (Flask/gunicorn, API bancaria con importes en centavos y transferencias
+  atómicas), `postgres` (StatefulSet con PVC), `loadgen` (generador de carga dentro del clúster), `clusterview`
+  (estado de pods/HPA/eventos y eliminación de pods del backend) y `frontend` (nginx + panel con Chart.js).
+- **Panel interactivo:** envía ráfagas y muestra qué pod respondió cada petición, genera carga ajustable
+  (tipo, RPS, duración), grafica RPS, latencia y número de pods, y muestra el estado del clúster en tiempo real.
+- **Pruebas:** 91 pruebas con pytest (unitarias, API e integración contra PostgreSQL real, incluida una de
+  concurrencia) y análisis estático con ruff.
+- **Contenedores:** un Dockerfile por servicio; imágenes publicadas en Amazon ECR con el SHA del commit como tag.
+- **Infraestructura como código:** Terraform crea los repositorios ECR y el clúster EKS (2 nodos `t3.medium`),
+  usando el `LabRole` del Learner Lab.
+- **Kubernetes:** Deployments, StatefulSet, Services, Secrets, sondas startup/readiness/liveness,
+  requests/limits, `topologySpreadConstraints`, RBAC mínimo y HPA `autoscaling/v2`. Kustomize con
+  overlays para `kind` (local) y `eks`.
+- **CI/CD con GitHub Actions:** CI en cada PR (ruff, pruebas, build de imágenes, validación de Terraform y
+  Kustomize); CD en cada push a `master` (publica en ECR, despliega en EKS y verifica el rollout).
+  Una regla de protección de rama exige que el CI pase antes de fusionar.
 
-Flujo de entrega: rama + PR → CI → merge a `master` → CD (build, push a ECR con tag = SHA, deploy a EKS).
+## Resultados
+
+| Prueba | Resultado |
+|--------|-----------|
+| Balanceo (500 peticiones, 3 pods) | Reparto prácticamente uniforme entre pods |
+| HPA en EKS (carga `work`, 15 RPS) | 2 → 8 réplicas, 0 errores, latencia p50 ≈ 86 ms |
+| Eliminación de un pod bajo carga | 1801 peticiones, 0 errores, pod de reemplazo listo en ≈ 8 s |
+| Test roto en un PR (#9) | El CI falla y bloquea el merge |
+| Lint roto en un PR | ruff falla y bloquea el merge |
+| Merge a `master` | CD despliega solo; la versión del panel coincide con el SHA |
+
+## Decisiones y problemas resueltos
+
+- **Balanceo visible:** nginx no usa `keepalive` hacia el backend, así cada petición abre una conexión nueva y
+  kube-proxy reparte entre pods sin sesgo.
+- **Variables de entorno de Services:** Kubernetes inyectaba `BACKEND_PORT=tcp://...` y rompía la plantilla de nginx;
+  se resolvió con `enableServiceLinks: false` y variables `*_ADDR`.
+- **Concurrencia:** las transferencias usan un `UPDATE` atómico en la base de datos, con prueba de integración.
+- **Learner Lab:** sin crear roles IAM; credenciales temporales renovadas en GitHub con `scripts/set-github-secrets.ps1`.
+- **Costos:** 2 nodos pequeños (~0,18 USD/h) y destrucción de todo al terminar.
 
 ## Estructura
 
 ```
-app/            backend, loadgen, clusterview, frontend (cada uno con Dockerfile y tests)
-k8s/            base/ y overlays/ (kind, eks) con Kustomize
-terraform/      ECR y EKS
-scripts/        push-images.ps1, deploy-eks.ps1, set-github-secrets.ps1
-.github/        workflows ci.yml y cd.yml
-docs/           evidencias (salidas de kubectl, ECR, etc.)
+app/         backend, loadgen, clusterview, frontend (Dockerfile y tests en cada uno)
+k8s/         base/ y overlays/ (kind, eks) con Kustomize
+terraform/   ECR y EKS
+scripts/     push-images.ps1, deploy-eks.ps1, set-github-secrets.ps1
+.github/     workflows de CI y CD
+docs/        evidencias (kubectl, ECR)
 ```
 
-## Requisitos
+## Cómo ejecutarlo
 
-Python 3.12, Docker, kubectl, kind, Terraform >= 1.5, AWS CLI, GitHub CLI (`gh`), PowerShell.
-
-## Ejecución local con Docker Compose
+**Local (Docker Compose):**
 
 ```powershell
-Copy-Item .env.example .env     # edita DB_PASSWORD y LOADGEN_TOKEN
-docker compose up -d --build
+Copy-Item .env.example .env      # define DB_PASSWORD y LOADGEN_TOKEN
+docker compose up -d --build     # panel en http://localhost:8080
 ```
 
-Panel en http://localhost:8080 (3 réplicas del backend).
-
-## Pruebas
-
-```powershell
-cd app\backend
-python -m venv .venv; .\.venv\Scripts\Activate.ps1
-pip install -r requirements-dev.txt
-pytest
-```
-
-Lo mismo en `app\loadgen` y `app\clusterview`. Las pruebas de PostgreSQL se ejecutan en el CI
-(servicio `postgres`). Análisis estático: `ruff check app`.
-
-## Kubernetes local (kind)
+**Kubernetes local (kind):**
 
 ```powershell
 kind create cluster --name globalbank --config k8s\kind-config.yaml
-kubectl apply -k k8s\overlays\kind
+kubectl apply -k k8s\overlays\kind     # panel en http://localhost:8090
 ```
 
-Panel en http://localhost:8090. Para metrics-server se usa `k8s/metrics-server-patch.json`.
-
-## Despliegue en AWS (Learner Lab)
-
-1. Iniciar el Lab y configurar credenciales en `~/.aws/credentials` (incluye `aws_session_token`).
-2. Crear la infraestructura:
+**AWS (Learner Lab):**
 
 ```powershell
 terraform -chdir=terraform init
-terraform -chdir=terraform plan -out tfplan
-terraform -chdir=terraform apply tfplan
-```
-
-3. Publicar imágenes y desplegar:
-
-```powershell
+terraform -chdir=terraform apply
 .\scripts\push-images.ps1
-.\scripts\deploy-eks.ps1      # crea el Secret desde .env, aplica el overlay eks y muestra la URL del LB
-```
-
-4. Destruir al terminar (evita costos):
-
-```powershell
-kubectl delete -k k8s\overlays\eks   # libera el balanceador
+.\scripts\deploy-eks.ps1
+# al terminar
+kubectl delete -k k8s\overlays\eks
 terraform -chdir=terraform destroy
-```
-
-## CI/CD
-
-- **CI** (`ci.yml`): ruff, pruebas (backend con PostgreSQL, loadgen, clusterview), build de las 4 imágenes,
-  validación de Terraform y Kustomize. Se ejecuta en cada PR y es requisito para fusionar a `master`.
-- **CD** (`cd.yml`): en cada push a `master` ejecuta el CI, publica las imágenes en ECR (tag = SHA corto),
-  actualiza el clúster y verifica rollout y disponibilidad.
-
-Los secretos de AWS se guardan en GitHub Actions. Con cada reinicio del Learner Lab hay que renovarlos:
-
-```powershell
-.\scripts\set-github-secrets.ps1
 ```
 
 ## Seguridad
 
-- Sin credenciales en el repositorio (`.env`, `*.tfvars`, `tfplan` ignorados).
-- Endpoints de control protegidos con token (`LOADGEN_TOKEN`) y con límites de carga.
-- RBAC acotado para `clusterview`; Secrets de Kubernetes para contraseña y token.
-
-## Demostración rápida
-
-1. Cambiar código y abrir un PR; ver el CI.
-2. Fusionar a `master`; ver el CD publicar y desplegar.
-3. Abrir la URL del balanceador; la versión mostrada coincide con el SHA.
-4. Generar carga desde el panel y observar el HPA (2 → 8 réplicas).
-5. Eliminar un pod del backend y ver la recuperación sin errores.
+Sin credenciales en el repositorio (`.env`, `*.tfvars` y `tfplan` ignorados); secretos de AWS en GitHub Actions;
+endpoints de control protegidos con token y límites de carga; RBAC acotado para `clusterview`.
